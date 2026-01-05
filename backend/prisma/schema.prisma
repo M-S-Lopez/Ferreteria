@@ -1,0 +1,84 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  description String?
+  price       Float
+  stock       Int
+  imageUrl    String?
+
+  // Relaciones
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  brandId     String?
+  brand       Brand?    @relation(fields: [brandId], references: [id])
+
+  orderItems  OrderItem[] // <--- AGREGAR ESTO: Un producto aparece en muchos items de compra
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  products  Product[] 
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model User {
+  id       String   @id @default(uuid())
+  email    String   @unique
+  name     String
+  password String
+  roles    String[] @default(["user"])
+  
+  orders   Order[]  // <--- CORRECTO: Un usuario tiene muchas Órdenes (no items)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Brand {
+  id        String    @id @default(uuid())
+  name      String    @unique // El nombre no se puede repetir
+  products  Product[] // Una marca tiene muchos productos
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Order {
+  id        String      @id @default(uuid())
+  total     Float       // El precio final de la compra
+  items     OrderItem[] // Los productos de esta compra
+  
+  userId    String      // Quién compró
+  user      User        @relation(fields: [userId], references: [id])
+
+  createdAt DateTime    @default(now())
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  quantity  Int     // Cuántos llevó (ej: 2 taladros)
+  price     Float   // A cuánto lo pagó en ese momento
+  
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+}
