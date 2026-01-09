@@ -1,18 +1,18 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { CreateAuthDto } from './dto/create-auth.dto';
-import { LoginAuthDto } from './dto/login-auth.dto'; // <--- Importamos el DTO de login
+import { LoginAuthDto } from './dto/login-auth.dto'; 
 import { PrismaService } from '../prisma/prisma.service';
-import { JwtService } from '@nestjs/jwt'; // <--- Importante para crear el token
+import { JwtService } from '@nestjs/jwt'; 
 import * as bcrypt from 'bcrypt';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
-    private jwtService: JwtService, // <--- Inyectamos el servicio de JWT
+    private jwtService: JwtService, 
   ) {}
 
-  // REGISTRO (Ya lo tenías)
   async register(createAuthDto: CreateAuthDto) {
     const { email, password, name } = createAuthDto;
     const userExists = await this.prisma.user.findUnique({ where: { email } });
@@ -29,7 +29,7 @@ export class AuthService {
         name,
         email,
         password: hashedPassword,
-        roles: ['admin'], // <--- CAMBIO 1: Plural y entre corchetes []
+        role: Role.ADMIN, 
       },
     });
     
@@ -38,16 +38,14 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        roles: user.roles, // <--- CAMBIO 2: Plural
+        role: user.role,
       },
     };
   }
 
-  // LOGIN (Nuevo) 👇
   async login(loginAuthDto: LoginAuthDto) {
     const { email, password } = loginAuthDto;
 
-    // 1. Buscamos el usuario
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
@@ -56,26 +54,23 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas (Email no encontrado)');
     }
 
-    // 2. Comparamos la contraseña plana con la encriptada
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales inválidas (Contraseña incorrecta)');
     }
 
-    // 3. Generamos el Token (JWT)
-    // Aquí guardamos datos útiles dentro del token para usarlos luego
     const payload = { 
       sub: user.id, 
       email: user.email, 
-      roles: user.roles // <--- CAMBIO 3: Plural
+      role: user.role 
     };
     
     return {
       access_token: await this.jwtService.signAsync(payload),
       user: {
         email: user.email,
-        roles: user.roles, // <--- CAMBIO 4: Plural
+        role: user.role, 
       },
     };
   }

@@ -6,34 +6,37 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
+  Query,
   UseInterceptors,
   UploadedFile,
-  BadRequestException,
-  UseGuards,
-  Query, // Importante para la seguridad
+  BadRequestException
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { AuthGuard } from '@nestjs/passport'; // El guardia de seguridad
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { PaginationDto } from './dto/pagination.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { FilterProductDto } from './dto/filter-product.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 
-
-@ApiTags('products') // (Opcional: ayuda a organizar Swagger)
-@ApiBearerAuth()     // <--- 2. ¡ESTA ES LA CLAVE! 🔑
+@ApiTags('Product')
 @Controller('product')
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(private readonly productService: ProductService) { }
 
-  // ==========================================
-  // 🔓 RUTAS PÚBLICAS (Cualquiera puede ver)
-  // ==========================================
+  @Post()
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  create(@Body() createProductDto: CreateProductDto) {
+    return this.productService.create(createProductDto);
+  }
 
   @Get()
-  findAll(@Query() params: FilterProductDto) {
-    return this.productService.findAll(params);
+  findAll(@Query() paginationDto: PaginationDto) {
+    return this.productService.findAll(paginationDto);
   }
 
   @Get(':id')
@@ -41,35 +44,23 @@ export class ProductController {
     return this.productService.findOne(id);
   }
 
-  // ==========================================
-  // 🔒 RUTAS PRIVADAS (Solo Admin con Token)
-  // ==========================================
-
-  // 1. Crear producto manual
-  @Post()
-  @UseGuards(AuthGuard('jwt')) // 🔒 Candado
-  create(@Body() createProductDto: CreateProductDto) {
-    return this.productService.create(createProductDto);
-  }
-
-  // 2. Editar producto
   @Patch(':id')
-  @UseGuards(AuthGuard('jwt')) // 🔒 Candado
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
     return this.productService.update(id, updateProductDto);
   }
 
-  // 3. Borrar producto
   @Delete(':id')
-  @UseGuards(AuthGuard('jwt')) // 🔒 Candado
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   remove(@Param('id') id: string) {
     return this.productService.remove(id);
   }
 
-  // 4. Carga Masiva (Excel)
   @Post('upload')
-  @UseGuards(AuthGuard('jwt'))
-  @UseInterceptors(FileInterceptor('file'))
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -82,24 +73,28 @@ export class ProductController {
       },
     },
   })
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
+        return cb(new BadRequestException('Solo se permiten imágenes (jpg, jpeg, png, gif)'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
-      throw new BadRequestException('No se ha subido ningún archivo');
+      throw new BadRequestException('No se subió ningún archivo');
     }
-    return this.productService.uploadExcel(file.buffer);
-  }
 
-  // 5. Subir Imagen a Cloudinary
-  @Post(':id/image')
-  @UseGuards(AuthGuard('jwt')) // 🔒 Candado
-  @UseInterceptors(FileInterceptor('file'))
-  uploadImage(
-    @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) {
-      throw new BadRequestException('No se ha subido ninguna imagen');
-    }
-    return this.productService.uploadProductImage(id, file);
+    return {
+      secureUrl: `http://localhost:3000/uploads/${file.filename}`
+    };
   }
 }

@@ -11,13 +11,14 @@ import * as XLSX from 'xlsx';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { Prisma } from '@prisma/client';
 import { FilterProductDto } from './dto/filter-product.dto';
+import { PaginationDto } from './dto/pagination.dto';
 
 @Injectable()
 export class ProductService {
   constructor(
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
-  ) {}
+  ) { }
 
   async create(createProductDto: CreateProductDto) {
     return this.prisma.product.create({
@@ -27,24 +28,19 @@ export class ProductService {
         description: createProductDto.description,
         price: createProductDto.price,
         stock: createProductDto.stock,
-        // IGNORAMOS 'brand' y 'category' aquí intencionalmente
-        // porque la creación manual simple no soporta la lógica avanzada.
       },
     });
   }
 
   async findAll(params: FilterProductDto) {
     const { page, limit, search, brand, category } = params;
-    
-    // 1. Calculamos cuántos saltar
+
     const skip = (page - 1) * limit;
 
-    // 2. Construimos el filtro dinámico
     const where: Prisma.ProductWhereInput = {
-      AND: [], // Empezamos con una lista vacía de condiciones
+      AND: [],
     };
 
-    // Si hay texto de búsqueda, buscamos en Nombre O Descripción
     if (search) {
       (where.AND as any[]).push({
         OR: [
@@ -55,7 +51,6 @@ export class ProductService {
       });
     }
 
-    // Si hay filtro de marca (busca por nombre de la marca relacionada)
     if (brand) {
       (where.AND as any[]).push({
         brand: {
@@ -64,7 +59,6 @@ export class ProductService {
       });
     }
 
-    // Si hay filtro de categoría
     if (category) {
       (where.AND as any[]).push({
         category: {
@@ -73,20 +67,16 @@ export class ProductService {
       });
     }
 
-    // 3. Ejecutamos dos consultas (Datos + Conteo Total)
-    // Promise.all hace que se ejecuten en paralelo (más rápido)
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
         skip,
         take: limit,
         where,
         include: { brand: true, category: true },
-        orderBy: { createdAt: 'desc' }, // Los más nuevos primero
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.product.count({ where }),
     ]);
-
-    // 4. Devolvemos la respuesta paginada
     return {
       data: products,
       meta: {
@@ -100,7 +90,7 @@ export class ProductService {
   async findOne(id: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: { brand: true, category: true }, // Incluimos relaciones
+      include: { brand: true, category: true },
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
@@ -115,7 +105,6 @@ export class ProductService {
         description: updateProductDto.description,
         price: updateProductDto.price,
         stock: updateProductDto.stock,
-        // También ignoramos las relaciones aquí para evitar el error rojo
       },
     });
   }
@@ -126,9 +115,6 @@ export class ProductService {
     });
   }
 
-  // ==========================================
-  // 🧠 LÓGICA INTELIGENTE DE EXCEL
-  // ==========================================
   async uploadExcel(buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -140,13 +126,10 @@ export class ProductService {
 
     for (const [index, row] of data.entries()) {
       try {
-        // 1. Validar datos mínimos
         const sku = row['SKU'];
         const name = row['Nombre'];
         const price = Number(row['Precio']);
         const stock = Number(row['Stock']);
-        
-        // Leemos las columnas de texto del Excel
         const brandName = row['Marca']?.toString().trim() || 'Genérica';
         const categoryName = row['Categoria']?.toString().trim() || 'General';
 
@@ -155,22 +138,18 @@ export class ProductService {
           continue;
         }
 
-        // 2. Gestionar MARCA (Buscar o Crear)
-        // Upsert = Update + Insert (Si existe úsala, si no créala)
         const brand = await this.prisma.brand.upsert({
           where: { name: brandName },
-          update: {}, // Si existe, no hacemos nada
-          create: { name: brandName }, // Si no, la creamos
+          update: {},
+          create: { name: brandName },
         });
 
-        // 3. Gestionar CATEGORÍA (Buscar o Crear)
         const category = await this.prisma.category.upsert({
           where: { name: categoryName },
           update: {},
           create: { name: categoryName },
         });
 
-        // 4. Crear el PRODUCTO vinculado
         await this.prisma.product.create({
           data: {
             sku,
@@ -178,14 +157,13 @@ export class ProductService {
             description: row['Descripcion'] || '',
             price,
             stock: stock || 0,
-            brandId: brand.id,       // <--- Enlace mágico con ID
-            categoryId: category.id, // <--- Enlace mágico con ID
+            brandId: brand.id,
+            categoryId: category.id,
           },
         });
 
         createdCount++;
       } catch (error) {
-        // Si falla por SKU duplicado (código P2002 de Prisma)
         if (error.code === 'P2002') {
           errors.push(`Fila ${index + 2}: El SKU ${row['SKU']} ya existe.`);
         } else {
