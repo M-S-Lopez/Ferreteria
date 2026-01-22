@@ -1,27 +1,29 @@
-import { Controller, Post, Body, UseGuards, Request, Get, ParseArrayPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/create-cart.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ApiBearerAuth, ApiTags, ApiBody } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Cart')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard) // 🔒 Todo el controlador protegido
 @Controller('cart')
 export class CartController {
   constructor(private readonly cartService: CartService) { }
 
   @Post()
-  @ApiBody({ type: [AddToCartDto] })
-  addItem(
-    @Request() req,
-    @Body(new ParseArrayPipe({ items: AddToCartDto })) addToCartDto: AddToCartDto[]
-  ) {
+  addToCart(@Request() req, @Body() addToCartDto: AddToCartDto) {
+    // req.user.userId viene del Token JWT
     return this.cartService.addToCart(req.user.userId, addToCartDto);
   }
 
   @Get()
-  getCart(@Request() req) {
-    return this.cartService.getCart(req.user.userId);
+  getMyCart(@Request() req) {
+    return this.cartService.getMyCart(req.user.userId);
+  }
+
+  @Delete(':itemId')
+  remove(@Request() req, @Param('itemId') itemId: string) {
+    return this.cartService.removeFromCart(req.user.userId, itemId);
   }
 }

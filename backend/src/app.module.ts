@@ -6,17 +6,16 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AuthModule } from './auth/auth.module';
 import { OrderModule } from './order/order.module';
 import { CartModule } from './cart/cart.module';
-import { PrismaService } from './prisma/prisma.service';
 import { join } from 'path';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
-      serveRoot: '/uploads',
-    }),
+    ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', 'uploads'), serveRoot: '/uploads', }),
     ProductModule, CloudinaryModule, ConfigModule.forRoot({ isGlobal: true }), AuthModule, OrderModule, CartModule,],
-  controllers: [],
-  providers: [PrismaService],
+  controllers: [AppController],
+  providers: [AppService],
 })
+
 export class AppModule { }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddToCartDto } from './dto/create-cart.dto';
 
@@ -6,71 +6,93 @@ import { AddToCartDto } from './dto/create-cart.dto';
 export class CartService {
   constructor(private prisma: PrismaService) { }
 
-  async addToCart(userId: string, itemsDto: AddToCartDto[]) {
+  // 🛒 1. AGREGAR AL CARRITO
+  async addToCart(userId: string, dto: AddToCartDto) {
+    // A. Validar que el producto exista y tenga stock
+    const product = await this.prisma.product.findUnique({
+      where: { id: dto.productId },
+    });
 
-    let cart = await this.prisma.cart.findUnique({
+    if (!product) throw new NotFoundException('Producto no encontrado');
+    if (product.stock < dto.quantity) {
+      throw new BadRequestException(`No hay suficiente stock. Disponible: ${product.stock}`);
+    }
+
+    // B. Buscar si el usuario ya tiene un carrito activo
+    let cart = await this.prisma.cart.findFirst({
       where: { userId },
     });
 
+    // C. Si no tiene, creamos uno
     if (!cart) {
       cart = await this.prisma.cart.create({
         data: { userId },
       });
     }
 
-    for (const itemDto of itemsDto) {
+    // D. Verificar si el producto YA está en el carrito para sumar cantidad
+    const existingItem = await this.prisma.cartItem.findFirst({
+      where: {
+        cartId: cart.id,
+        productId: dto.productId,
+      },
+    });
 
-      const product = await this.prisma.product.findUnique({
-        where: { id: itemDto.productId },
+    if (existingItem) {
+      // Si ya existe, actualizamos la cantidad
+      return this.prisma.cartItem.update({
+        where: { id: existingItem.id },
+        data: { quantity: existingItem.quantity + dto.quantity },
       });
-
-      if (!product) {
-        throw new NotFoundException(`El producto con ID ${itemDto.productId} no existe`);
-      }
-
-      if (product.stock < itemDto.quantity) {
-        throw new BadRequestException(`No hay suficiente stock para el producto: ${product.name}. Solo quedan ${product.stock}.`);
-      }
-
-      const existingItem = await this.prisma.cartItem.findFirst({
-        where: {
+    } else {
+      // Si no existe, creamos el item nuevo
+      return this.prisma.cartItem.create({
+        data: {
           cartId: cart.id,
-          productId: itemDto.productId,
+          productId: dto.productId,
+          quantity: dto.quantity,
         },
       });
-
-      if (existingItem) {
-        await this.prisma.cartItem.update({
-          where: { id: existingItem.id },
-          data: { quantity: existingItem.quantity + itemDto.quantity },
-        });
-      } else {
-        await this.prisma.cartItem.create({
-          data: {
-            cartId: cart.id,
-            productId: itemDto.productId,
-            quantity: itemDto.quantity,
-          },
-        });
-      }
     }
-
-    return this.getCart(userId);
   }
 
-  async getCart(userId: string) {
-    return this.prisma.cart.findUnique({
+  // 👀 2. VER MI CARRITO
+  async getMyCart(userId: string) {
+    const cart = await this.prisma.cart.findFirst({
       where: { userId },
       include: {
         items: {
           include: {
-            product: true
+            product: true, // Incluimos detalles del producto (foto, precio)
           },
-          orderBy: {
-            productId: 'asc'
-          }
-        }
+        },
       },
+    });
+
+    if (!cart) return { items: [], total: 0 };
+
+    // Calculamos el total a pagar dinámicamente
+    const total = cart.items.reduce((acc, item) => {
+      return acc + (item.quantity * item.product.price);
+    }, 0);
+
+    return { ...cart, total };
+  }
+
+  // ❌ 3. ELIMINAR ITEM DEL CARRITO
+  async removeFromCart(userId: string, itemId: string) {
+    // Verificamos que el item pertenezca al carrito del usuario (Seguridad)
+    const cart = await this.prisma.cart.findFirst({ where: { userId } });
+    if (!cart) throw new NotFoundException('Carrito no encontrado');
+
+    const item = await this.prisma.cartItem.findFirst({
+      where: { id: itemId, cartId: cart.id },
+    });
+
+    if (!item) throw new NotFoundException('Item no encontrado en tu carrito');
+
+    return this.prisma.cartItem.delete({
+      where: { id: itemId },
     });
   }
 }

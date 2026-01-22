@@ -23,7 +23,7 @@ export class ProductService {
   async create(createProductDto: CreateProductDto) {
     return this.prisma.product.create({
       data: {
-        sku: createProductDto.sku,
+        codigo: createProductDto.codigo,
         name: createProductDto.name,
         description: createProductDto.description,
         price: createProductDto.price,
@@ -46,7 +46,7 @@ export class ProductService {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
           { description: { contains: search, mode: 'insensitive' } },
-          { sku: { contains: search, mode: 'insensitive' } },
+          { codigo: { contains: search, mode: 'insensitive' } },
         ],
       });
     }
@@ -100,7 +100,7 @@ export class ProductService {
     return this.prisma.product.update({
       where: { id },
       data: {
-        sku: updateProductDto.sku,
+        codigo: updateProductDto.codigo,
         name: updateProductDto.name,
         description: updateProductDto.description,
         price: updateProductDto.price,
@@ -126,15 +126,15 @@ export class ProductService {
 
     for (const [index, row] of data.entries()) {
       try {
-        const sku = row['SKU'];
+        const codigo = row['codigo'];
         const name = row['Nombre'];
         const price = Number(row['Precio']);
         const stock = Number(row['Stock']);
         const brandName = row['Marca']?.toString().trim() || 'Genérica';
         const categoryName = row['Categoria']?.toString().trim() || 'General';
 
-        if (!sku || !name || !price) {
-          errors.push(`Fila ${index + 2}: Falta SKU, Nombre o Precio`);
+        if (!codigo || !name || !price) {
+          errors.push(`Fila ${index + 2}: Falta Codigo, Nombre o Precio`);
           continue;
         }
 
@@ -152,7 +152,7 @@ export class ProductService {
 
         await this.prisma.product.create({
           data: {
-            sku,
+            codigo,
             name,
             description: row['Descripcion'] || '',
             price,
@@ -165,7 +165,7 @@ export class ProductService {
         createdCount++;
       } catch (error) {
         if (error.code === 'P2002') {
-          errors.push(`Fila ${index + 2}: El SKU ${row['SKU']} ya existe.`);
+          errors.push(`Fila ${index + 2}: El Codigo ${row['codigo']} ya existe.`);
         } else {
           console.error(error);
           errors.push(`Fila ${index + 2}: Error desconocido`);
@@ -189,5 +189,40 @@ export class ProductService {
       where: { id },
       data: { imageUrl: image.secure_url },
     });
+  }
+  async importExcel(buffer: Buffer) {
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    const rows = XLSX.utils.sheet_to_json(sheet);
+
+    const productsToInsert = rows.map((row: any) => {
+      if (!row.Nombre || !row.Precio) {
+        throw new BadRequestException(`Fila inválida: ${JSON.stringify(row)}`);
+      }
+
+      return {
+        name: row.Nombre,
+        description: row.Descripcion || '',
+        price: parseFloat(row.Precio),
+        stock: parseInt(row.Stock || '0'),
+        imageUrl: row.Imagen || null,
+
+        codigo: row.Codigo || `GEN-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      };
+    });
+
+    const result = await this.prisma.product.createMany({
+      data: productsToInsert,
+      skipDuplicates: true,
+    });
+
+    return {
+      message: 'Importación exitosa',
+      totalRows: rows.length,
+      inserted: result.count,
+    };
   }
 }
