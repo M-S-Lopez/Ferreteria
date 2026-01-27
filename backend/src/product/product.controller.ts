@@ -58,12 +58,8 @@ export class ProductController {
       throw new BadRequestException('Solo se permiten archivos Excel (.xlsx)');
     }
 
-    return this.productService.importExcel(file.buffer);
+    return this.productService.importExcel(file);
   }
-
-  // ======================================================
-  // 🖼️ 2. IMÁGENES: SUBIDA INDIVIDUAL
-  // ======================================================
   @Post('upload')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -90,10 +86,6 @@ export class ProductController {
       publicId: result.public_id
     };
   }
-
-  // ======================================================
-  // 🛠️ 3. CRUD NORMAL
-  // ======================================================
 
   @Post()
   @ApiBearerAuth()

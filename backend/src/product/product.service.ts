@@ -1,195 +1,111 @@
-import {
-  Injectable,
-  BadRequestException,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductDto } from './dto/update-product.dto';
 import * as XLSX from 'xlsx';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
-import { Prisma } from '@prisma/client';
-import { FilterProductDto } from './dto/filter-product.dto';
-import { PaginationDto } from './dto/pagination.dto';
-
 
 @Injectable()
 export class ProductService {
-  constructor(private prisma: PrismaService, private cloudinary: CloudinaryService) { }
+  constructor(private prisma: PrismaService) { }
 
-  async create(createProductDto: CreateProductDto) {
+  // ======================================================
+  // 1. CREAR PRODUCTO
+  // ======================================================
+  async create(data: any) {
     return this.prisma.product.create({
       data: {
-        codigo: createProductDto.codigo,
-        name: createProductDto.name,
-        description: createProductDto.description,
-        price: createProductDto.price,
-        stock: createProductDto.stock,
+        codigo: data.codigo,
+        name: data.name,
+        description: data.description,
+        price: Number(data.price),
+        stock: Number(data.stock),
+
+        // ✅ CORREGIDO: La base de datos pide 'imagen'
+        imagen: data.image || data.imagen || null,
+
+        brand: data.brand || null,
+        category: data.category || null,
       },
     });
   }
 
-  async findAll(params: FilterProductDto) {
-    const { page, limit, search, brand, category } = params;
+  // ======================================================
+  // 2. LISTAR TODOS
+  // ======================================================
+  async findAll(paginationDto: any) {
+    const { limit = 10, page = 1, search } = paginationDto;
+    const offset = (page - 1) * limit;
 
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.ProductWhereInput = {
-      AND: [],
-    };
+    // Configurar el filtro de búsqueda (si enviaron algo)
+    const whereCondition: any = {};
 
     if (search) {
-      (where.AND as any[]).push({
-        OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-          { codigo: { contains: search, mode: 'insensitive' } },
-        ],
-      });
+      whereCondition.OR = [
+        { name: { contains: search, mode: 'insensitive' } },      // Busca en Nombre
+        { brand: { contains: search, mode: 'insensitive' } },     // Busca en Marca
+        { category: { contains: search, mode: 'insensitive' } },  // Busca en Categoría
+        { codigo: { contains: search, mode: 'insensitive' } },    // Busca en Código
+      ];
     }
 
-    if (brand) {
-      (where.AND as any[]).push({
-        brand: {
-          name: { contains: brand, mode: 'insensitive' },
-        },
-      });
-    }
+    // 1. Obtener total (aplicando el filtro para que el número sea real)
+    const totalItems = await this.prisma.product.count({
+      where: whereCondition,
+    });
 
-    if (category) {
-      (where.AND as any[]).push({
-        category: {
-          name: { contains: category, mode: 'insensitive' },
-        },
-      });
-    }
+    // 2. Obtener productos
+    const products = await this.prisma.product.findMany({
+      where: whereCondition, // 👈 Aplicamos el filtro aquí
+      take: Number(limit),
+      skip: offset,
+      orderBy: { createdAt: 'desc' },
+    });
 
-    const [products, total] = await Promise.all([
-      this.prisma.product.findMany({
-        skip,
-        take: limit,
-        where,
-        include: { brand: true, category: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.product.count({ where }),
-    ]);
     return {
       data: products,
       meta: {
-        total,
-        page,
-        lastPage: Math.ceil(total / limit),
-      },
+        totalItems,
+        page: Number(page),
+        lastPage: Math.ceil(totalItems / limit),
+      }
     };
   }
 
+  // ======================================================
+  // 3. BUSCAR UNO
+  // ======================================================
   async findOne(id: string) {
     const product = await this.prisma.product.findUnique({
       where: { id },
-      include: { brand: true, category: true },
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto) {
+  // ======================================================
+  // 4. ACTUALIZAR
+  // ======================================================
+  async update(id: string, data: any) {
     return this.prisma.product.update({
       where: { id },
       data: {
-        codigo: updateProductDto.codigo,
-        name: updateProductDto.name,
-        description: updateProductDto.description,
-        price: updateProductDto.price,
-        stock: updateProductDto.stock,
+        ...(data.name && { name: data.name }),
+        ...(data.price && { price: Number(data.price) }),
+        ...(data.stock && { stock: Number(data.stock) }),
+        ...(data.description && { description: data.description }),
+
+        // ✅ CORREGIDO: Usamos 'imagen'
+        ...((data.image || data.imagen) && { imagen: data.image || data.imagen }),
+
+        ...(data.brand && { brand: data.brand }),
+        ...(data.category && { category: data.category }),
       },
     });
   }
 
-  async remove(id: string) {
-    return this.prisma.product.delete({
-      where: { id },
-    });
-  }
-
-  async uploadExcel(buffer: Buffer) {
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(sheet);
-
-    let createdCount = 0;
-    let errors = [];
-
-    for (const [index, row] of data.entries()) {
-      try {
-        const codigo = row['codigo'];
-        const name = row['Nombre'];
-        const price = Number(row['Precio']);
-        const stock = Number(row['Stock']);
-        const brandName = row['Marca']?.toString().trim() || 'Genérica';
-        const categoryName = row['Categoria']?.toString().trim() || 'General';
-
-        if (!codigo || !name || !price) {
-          errors.push(`Fila ${index + 2}: Falta Codigo, Nombre o Precio`);
-          continue;
-        }
-
-        const brand = await this.prisma.brand.upsert({
-          where: { name: brandName },
-          update: {},
-          create: { name: brandName },
-        });
-
-        const category = await this.prisma.category.upsert({
-          where: { name: categoryName },
-          update: {},
-          create: { name: categoryName },
-        });
-
-        await this.prisma.product.create({
-          data: {
-            codigo,
-            name,
-            description: row['Descripcion'] || '',
-            price,
-            stock: stock || 0,
-            brandId: brand.id,
-            categoryId: category.id,
-          },
-        });
-
-        createdCount++;
-      } catch (error) {
-        if (error.code === 'P2002') {
-          errors.push(`Fila ${index + 2}: El Codigo ${row['codigo']} ya existe.`);
-        } else {
-          console.error(error);
-          errors.push(`Fila ${index + 2}: Error desconocido`);
-        }
-      }
-    }
-
-    return {
-      message: 'Carga masiva completada',
-      created: createdCount,
-      errors: errors,
-    };
-  }
-
-  async uploadProductImage(id: string, file: Express.Multer.File) {
-    const product = await this.prisma.product.findUnique({ where: { id } });
-    if (!product) throw new NotFoundException('Producto no encontrado');
-
-    const image = await this.cloudinary.uploadImage(file);
-    return this.prisma.product.update({
-      where: { id },
-      data: { imageUrl: image.secure_url },
-    });
-  }
-  async importExcel(buffer: Buffer) {
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
+  // ======================================================
+  // 5. IMPORTAR EXCEL
+  // ======================================================
+  async importExcel(file: Express.Multer.File) {
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const data = XLSX.utils.sheet_to_json(sheet);
@@ -199,24 +115,45 @@ export class ProductService {
     const results = [];
 
     for (const row of data as any[]) {
-      if (!row.codigo) continue;
+      const excelCodigo = row['Codigo'] || row['codigo'];
+      if (!excelCodigo) continue;
+
+      // Mapeo
+      const nombre = row['Nombre'] || row['nombre'];
+      const descripcion = row['Descripcion'] || row['descripcion'];
+      const precio = row['Precio'] || row['precio'];
+      const stock = row['Stock'] || row['stock'];
+      const imagenUrl = row['Imagen'] || row['imagen'];
+      const marca = row['Marca'] || row['marca'];
+      const categoria = row['Categoria'] || row['categoria'];
 
       const savedProduct = await this.prisma.product.upsert({
-        where: { codigo: String(row.codigo) },
+        where: { codigo: String(excelCodigo) },
+
         update: {
-          name: row.name,
-          description: row.description || '',
-          price: Number(row.price),
-          stock: Number(row.stock),
-          imageUrl: row.Imagen || null,
+          name: nombre,
+          description: descripcion,
+          price: Number(precio),
+          stock: Number(stock),
+
+          // ✅ CORREGIDO: Usamos 'imagen'
+          imagen: imagenUrl || null,
+
+          brand: marca || null,
+          category: categoria || null
         },
         create: {
-          codigo: String(row.codigo),
-          name: row.name,
-          description: row.description || '',
-          price: Number(row.price),
-          stock: Number(row.stock),
-          imageUrl: row.Imagen || null,
+          codigo: String(excelCodigo),
+          name: nombre,
+          description: descripcion,
+          price: Number(precio),
+          stock: Number(stock),
+
+          // ✅ CORREGIDO: Usamos 'imagen'
+          imagen: imagenUrl || null,
+
+          brand: marca || null,
+          category: categoria || null
         },
       });
 
@@ -224,8 +161,15 @@ export class ProductService {
     }
 
     return {
-      message: 'Importación completada 🚀',
-      processed: results.length,
+      message: '✅ Importación completada',
+      processedItems: results.length,
     };
+  }
+
+  // ======================================================
+  // 6. BORRAR
+  // ======================================================
+  async remove(id: string) {
+    return this.prisma.product.delete({ where: { id } });
   }
 }
