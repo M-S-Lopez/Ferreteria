@@ -26,7 +26,10 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 @ApiTags('Product')
 @Controller('product')
 export class ProductController {
-  constructor(private readonly productService: ProductService) { }
+  constructor(
+    private readonly productService: ProductService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) { }
 
   // ======================================================
   // 🟢 1. EXCEL: IMPORTACIÓN MASIVA
@@ -69,32 +72,22 @@ export class ProductController {
     schema: {
       type: 'object',
       properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
+        file: { type: 'string', format: 'binary' },
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file', {
-    storage: diskStorage({
-      destination: './uploads',
-      filename: (req, file, cb) => {
-        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
-        cb(null, `${randomName}${extname(file.originalname)}`);
-      },
-    }),
-    fileFilter: (req, file, cb) => {
-      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
-        return cb(new BadRequestException('Solo se permiten imágenes'), false);
-      }
-      cb(null, true);
-    },
-  }))
-  uploadImage(@UploadedFile() file: Express.Multer.File) {
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No se subió archivo');
+
+    const result = await this.cloudinaryService.uploadImage(file).catch((error) => {
+      throw new BadRequestException(error.message || 'Error al subir la imagen a Cloudinary');
+    });
+
     return {
-      secureUrl: `http://localhost:3000/uploads/${file.filename}`
+      message: 'Imagen subida exitosamente ☁️',
+      secureUrl: result.secure_url,
+      publicId: result.public_id
     };
   }
 

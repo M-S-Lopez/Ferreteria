@@ -13,12 +13,10 @@ import { Prisma } from '@prisma/client';
 import { FilterProductDto } from './dto/filter-product.dto';
 import { PaginationDto } from './dto/pagination.dto';
 
+
 @Injectable()
 export class ProductService {
-  constructor(
-    private prisma: PrismaService,
-    private cloudinary: CloudinaryService,
-  ) { }
+  constructor(private prisma: PrismaService, private cloudinary: CloudinaryService) { }
 
   async create(createProductDto: CreateProductDto) {
     return this.prisma.product.create({
@@ -192,37 +190,42 @@ export class ProductService {
   }
   async importExcel(buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
-
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet);
 
-    const rows = XLSX.utils.sheet_to_json(sheet);
+    if (data.length === 0) throw new BadRequestException('El Excel está vacío');
 
-    const productsToInsert = rows.map((row: any) => {
-      if (!row.Nombre || !row.Precio) {
-        throw new BadRequestException(`Fila inválida: ${JSON.stringify(row)}`);
-      }
+    const results = [];
 
-      return {
-        name: row.Nombre,
-        description: row.Descripcion || '',
-        price: parseFloat(row.Precio),
-        stock: parseInt(row.Stock || '0'),
-        imageUrl: row.Imagen || null,
+    for (const row of data as any[]) {
+      if (!row.codigo) continue;
 
-        codigo: row.Codigo || `GEN-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-      };
-    });
+      const savedProduct = await this.prisma.product.upsert({
+        where: { codigo: String(row.codigo) },
+        update: {
+          name: row.name,
+          description: row.description || '',
+          price: Number(row.price),
+          stock: Number(row.stock),
+          imageUrl: row.Imagen || null,
+        },
+        create: {
+          codigo: String(row.codigo),
+          name: row.name,
+          description: row.description || '',
+          price: Number(row.price),
+          stock: Number(row.stock),
+          imageUrl: row.Imagen || null,
+        },
+      });
 
-    const result = await this.prisma.product.createMany({
-      data: productsToInsert,
-      skipDuplicates: true,
-    });
+      results.push(savedProduct);
+    }
 
     return {
-      message: 'Importación exitosa',
-      totalRows: rows.length,
-      inserted: result.count,
+      message: 'Importación completada 🚀',
+      processed: results.length,
     };
   }
 }
