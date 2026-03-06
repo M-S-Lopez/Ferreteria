@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -78,6 +78,35 @@ export class OrderService {
         },
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findAllForAdmin() {
+    return this.prisma.order.findMany({
+      include: {
+        // Sería ideal incluir al usuario para saber quién compró:
+        // user: { select: { id: true, email: true, name: true } }, 
+        items: {
+          include: { product: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // 2. Actualizar el estado (Ej: PENDING -> SHIPPED)
+  async updateStatus(orderId: string, status: any) { // Usamos 'any' o el enum OrderStatus de Prisma
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`La orden con ID ${orderId} no existe`);
+    }
+
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { status },
     });
   }
 }

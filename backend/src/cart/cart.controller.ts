@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Patch, UseGuards, Request } from '@nestjs/common';
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/create-cart.dto';
+import { UpdateCartDto } from './dto/update-cart.dto'; // 👈 Importamos el nuevo DTO
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
@@ -20,6 +21,18 @@ export class CartController {
   @Get()
   getMyCart(@Request() req) {
     return this.cartService.getMyCart(req.user.userId);
+  }
+
+  // ==============================================================
+  // 👇 NUEVO ENDPOINT: Actualizar cantidad
+  // ==============================================================
+  @Patch(':itemId')
+  updateQuantity(
+    @Request() req,
+    @Param('itemId') itemId: string,
+    @Body() updateCartDto: UpdateCartDto,
+  ) {
+    return this.cartService.updateItemQuantity(req.user.userId, itemId, updateCartDto.quantity);
   }
 
   @Delete(':itemId')

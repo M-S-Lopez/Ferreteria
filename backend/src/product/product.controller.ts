@@ -17,6 +17,9 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginationDto } from './dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -31,12 +34,27 @@ export class ProductController {
     private readonly cloudinaryService: CloudinaryService,
   ) { }
 
-  // ======================================================
-  // 🟢 1. EXCEL: IMPORTACIÓN MASIVA
-  // ======================================================
+  // =========================================================
+  // 🟢 RUTAS PÚBLICAS (Sin candado)
+  // =========================================================
+
+  @Get()
+  findAll(@Query() paginationDto: PaginationDto) {
+    return this.productService.findAll(paginationDto);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.productService.findOne(id);
+  }
+
+  // =========================================================
+  // 🔴 RUTAS DE ADMIN (Con candados @Roles('ADMIN'))
+  // =========================================================
+
   @Post('import-excel')
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN') // 🔒 Candado
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -60,9 +78,11 @@ export class ProductController {
 
     return this.productService.importExcel(file);
   }
+
   @Post('upload')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN') // 🔒 Candado
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -89,31 +109,24 @@ export class ProductController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN') // 🔒 Candado
+  @UseGuards(JwtAuthGuard, RolesGuard)
   create(@Body() createProductDto: CreateProductDto) {
     return this.productService.create(createProductDto);
   }
 
-  @Get()
-  findAll(@Query() paginationDto: PaginationDto) {
-    return this.productService.findAll(paginationDto);
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.productService.findOne(id);
-  }
-
   @Patch(':id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN') // 🔒 Candado
+  @UseGuards(JwtAuthGuard, RolesGuard)
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
     return this.productService.update(id, updateProductDto);
   }
 
   @Delete(':id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @Roles('ADMIN') // 🔒 Candado
+  @UseGuards(JwtAuthGuard, RolesGuard)
   remove(@Param('id') id: string) {
     return this.productService.remove(id);
   }

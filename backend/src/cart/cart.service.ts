@@ -95,4 +95,39 @@ export class CartService {
       where: { id: itemId },
     });
   }
+  // Actualizar cantidad de un item
+  async updateItemQuantity(userId: string, cartItemId: string, quantity: number) {
+    // 1. Buscamos el ítem
+    const cartItem = await this.prisma.cartItem.findUnique({
+      where: { id: cartItemId },
+      include: { product: true },
+    });
+
+    if (!cartItem) {
+      throw new NotFoundException('Ítem no encontrado en el carrito');
+    }
+
+    // 2. Buscamos el carrito para asegurarnos de que sea del usuario actual
+    const cart = await this.prisma.cart.findUnique({
+      where: { id: cartItem.cartId }
+    });
+
+    if (!cart || cart.userId !== userId) {
+      throw new BadRequestException('No tienes permiso para modificar este ítem');
+    }
+
+    // 3. VALIDACIÓN DE STOCK 🛡️
+    if (quantity > cartItem.product.stock) {
+      throw new BadRequestException(
+        `Stock insuficiente. Solo quedan ${cartItem.product.stock} unidades disponibles.`
+      );
+    }
+
+    // 4. Actualizamos
+    return this.prisma.cartItem.update({
+      where: { id: cartItemId },
+      data: { quantity },
+      include: { product: true }
+    });
+  }
 }
