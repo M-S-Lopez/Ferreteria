@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Esta línea es la que soluciona el cuelgue
 }
 
 model Product {
@@ -20,23 +21,18 @@ model Product {
 
   imagen      String?
   brand       String?
-  category    String? 
-
-
+  category    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 model User {
-  id       String   @id @default(uuid())
-  email    String   @unique
-  name     String
-  password String
-  role Role @default(USER)  
-  orders   Order[]  
-  cart Cart?
-
-
+  id        String   @id // Modificado: Supabase asignará este UUID
+  email     String   @unique
+  name      String
+  role      Role     @default(USER)  
+  orders    Order[]  
+  cart      Cart?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

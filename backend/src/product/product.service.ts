@@ -4,6 +4,9 @@ import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ProductService {
+  uploadImage(uploadData: any) {
+    throw new Error('Method not implemented.');
+  }
   constructor(private prisma: PrismaService) { }
 
   // ======================================================
