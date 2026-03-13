@@ -18,10 +18,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // 1. Buscas al usuario en TU base de datos local usando el ID de Supabase
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
+    // 2. Si no lo encuentra, lo rechaza
     if (!user) {
       throw new UnauthorizedException('Usuario no registrado en el sistema local');
     }

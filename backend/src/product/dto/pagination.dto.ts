@@ -1,18 +1,21 @@
-import { IsOptional, IsInt, Min, IsString, IsPositive } from 'class-validator';
+import { IsOptional, IsPositive, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PaginationDto {
+    @ApiPropertyOptional({ description: 'Cantidad de elementos a devolver', default: 10 })
     @IsOptional()
     @IsPositive()
-    @Type(() => Number)
+    @Type(() => Number) // Convierte el string de la URL a un número real
     limit?: number;
 
+    @ApiPropertyOptional({ description: 'Cantidad de elementos a saltar', default: 0 })
     @IsOptional()
     @Min(0)
     @Type(() => Number)
-    page?: number;
+    offset?: number;
 
+    @ApiPropertyOptional({ description: 'Término de búsqueda (busca en nombre, descripción o código)' })
     @IsOptional()
     @IsString()
     search?: string;

@@ -53,6 +53,7 @@ export class ProductController {
   // =========================================================
 
   @Post('import-excel')
+  @ApiBearerAuth()
   @Roles('ADMIN') // 🔒 Candado
   @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiConsumes('multipart/form-data')
